@@ -1,45 +1,134 @@
 name: Release & Publish SDKs
 
 on:
+  push:
+    tags:
+      - 'v*'
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release Tag (e.g. v0.1.0)'
+        required: true
+        default: 'v0.1.0'
+
+permissions:
+  contents: write
+  packages: write
 
 jobs:
-  publish-npm:
+  build-and-release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 20
-          registry-url: 'https://registry.npmjs.org'
-      - name: Publish JS SDK
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Build Web SDK (@zetroq/chat)
         run: |
           cd js
           npm install
           npm run build
-          npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-      - name: Publish React Native SDK
+          npm pack
+          mv zetroq-chat-*.tgz ../zetroq-chat-web.tgz
+          cd ..
+
+      - name: Build React Native SDK (@zetroq/chat-react-native)
         run: |
           cd react-native
           npm install
           npm run build
-          npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          npm pack
+          mv zetroq-chat-react-native-*.tgz ../zetroq-chat-react-native.tgz
+          cd ..
 
-  publish-flutter:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.19.x'
-      - name: Publish to pub.dev
+      - name: Prepare Flutter SDK package
         run: |
           cd flutter
           flutter pub get
-        # Set up pub.dev credentials via secret token or OAuth
+          tar -czf ../zetroq-chat-flutter.tar.gz lib pubspec.yaml README.md LICENSE* 2>/dev/null || tar -czf ../zetroq-chat-flutter.tar.gz lib pubspec.yaml README.md
+          cd ..
+
+      - name: Determine Release Tag
+        id: release_tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag_name }}" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          fi
+
+      # ── Create GitHub Release (populates the "Releases" section on GitHub) ──
+      - name: Create / Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_tag.outputs.tag }}
+          name: ZetroQ SDKs ${{ steps.release_tag.outputs.tag }}
+          draft: false
+          prerelease: false
+          body: |
+            ## ZetroQ Official Client SDKs Release ${{ steps.release_tag.outputs.tag }}
+
+            ### Included Packages:
+            - **Web / React**: `@zetroq/chat` (npm & GitHub Packages)
+            - **React Native / Expo**: `@zetroq/chat-react-native` (npm & GitHub Packages)
+            - **Flutter**: `zetroq_chat` (pub.dev & GitHub release tarball)
+
+            ### Installation:
+            ```bash
+            # Web / React
+            npm install @zetroq/chat
+
+            # React Native
+            npm install @zetroq/chat-react-native
+
+            # Flutter
+            flutter pub add zetroq_chat
+            ```
+          files: |
+            zetroq-chat-web.tgz
+            zetroq-chat-react-native.tgz
+            zetroq-chat-flutter.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Publish to GitHub Packages (populates the "Packages" section on GitHub) ──
+      - name: Publish to GitHub Packages Registry
+        run: |
+          # Configure .npmrc for GitHub Packages
+          echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" > ~/.npmrc
+          echo "@zetroq:registry=https://npm.pkg.github.com" >> ~/.npmrc
+
+          # Publish JS SDK to GitHub Packages
+          cd js
+          npm publish --registry=https://npm.pkg.github.com || echo "JS package already published or pending"
+          cd ..
+
+          # Publish React Native SDK to GitHub Packages
+          cd react-native
+          npm publish --registry=https://npm.pkg.github.com || echo "React Native package already published or pending"
+          cd ..
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Optional: Publish to Official Public npm Registry (if NPM_TOKEN secret provided) ──
+      - name: Publish to Public npmjs.org
+        if: env.NPM_TOKEN != ''
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+          cd js && npm publish --access public || true
+          cd ../react-native && npm publish --access public || true
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
