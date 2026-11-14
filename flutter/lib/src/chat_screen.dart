@@ -67,7 +67,7 @@ class _ZetroqChatScreenState extends State<ZetroqChatScreen> {
                     margin: const EdgeInsets.symmetric(vertical: 4),
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
-                      color: m.mine ? primary : Theme.of(context).colorScheme.surfaceVariant,
+                      color: m.mine ? primary : Theme.of(context).colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(16),
                     ),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
