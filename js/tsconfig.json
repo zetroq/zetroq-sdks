@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ES2020",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2020", "DOM"],
+    "strict": true,
+    "declaration": true,
+    "outDir": "dist",
+    "rootDir": "src",
+    "skipLibCheck": true,
+    "typeRoots": ["../../frontend-vendor/node_modules/@types"],
+    "paths": {
+      "react": ["../../frontend-vendor/node_modules/@types/react"]
+    }
+  },
+  "include": ["src"]
+}

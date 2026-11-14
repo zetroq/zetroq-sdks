@@ -1,0 +1,47 @@
+name: SDK CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-js:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build Web SDK
+        run: |
+          cd js
+          npm install
+          npm run build
+
+  test-react-native:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build React Native SDK
+        run: |
+          cd react-native
+          npm install
+          npm run build
+
+  test-flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.x'
+      - name: Analyze Flutter SDK
+        run: |
+          cd flutter
+          flutter pub get
+          flutter analyze

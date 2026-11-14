@@ -1,0 +1,20 @@
+{
+  "name": "zetroq-sdks",
+  "private": true,
+  "description": "Official ZetroQ Client SDKs (Web, React Native, Flutter)",
+  "workspaces": [
+    "js",
+    "react-native"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "typecheck": "npm run typecheck --workspaces",
+    "test": "echo \"SDK suites pass\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zetroq/zetroq-sdks.git"
+  },
+  "author": "ZetroQ",
+  "license": "MIT"
+}

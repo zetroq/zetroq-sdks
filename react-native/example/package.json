@@ -1,0 +1,15 @@
+{
+  "name": "zetroq-chat-expo-example",
+  "private": true,
+  "main": "node_modules/expo/AppEntry.js",
+  "scripts": { "start": "expo start" },
+  "dependencies": {
+    "@react-native-async-storage/async-storage": "2.1.2",
+    "@zetroq/chat-react-native": "file:..",
+    "expo": "53.0.0",
+    "expo-document-picker": "13.1.5",
+    "expo-notifications": "0.31.1",
+    "react": "19.0.0",
+    "react-native": "0.79.2"
+  }
+}

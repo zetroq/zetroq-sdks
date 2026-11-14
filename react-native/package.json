@@ -1,0 +1,30 @@
+{
+  "name": "@zetroq/chat-react-native",
+  "version": "0.1.0",
+  "description": "ZetroQ chat for React Native and Expo apps",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zetroq/zetroq-sdks.git",
+    "directory": "react-native"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-native": ">=0.72"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.8",
+    "typescript": "5.6.3"
+  }
+}
