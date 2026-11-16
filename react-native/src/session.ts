@@ -1,6 +1,7 @@
 import { ZetroqClient, parseSse, toMessage } from './client';
 import { OfflineQueue, makeClientMessageId } from './queue';
-import type { ChatMessage, ChatTheme, ZetroqConfig } from './types';
+import type { IdentifyResult, UploadedAttachment } from './client';
+import type { ChatMessage, ChatTheme, PickedFile, ZetroqConfig } from './types';
 
 export interface SessionState {
   ready: boolean;
@@ -40,7 +41,7 @@ type Listener = (s: SessionState) => void;
 /**
  * One chat session: start / resume, send with an idempotent clientMessageId,
  * live updates over SSE (XHR progress events, which work in React Native)
- * with a polling fallback, and an offline queue flushed on reconnect.
+ * with a GET /history polling fallback, and an offline queue flushed on reconnect.
  */
 export class ChatSession {
   readonly client: ZetroqClient;
@@ -57,7 +58,7 @@ export class ChatSession {
   private identityToken?: string;
   private queue: OfflineQueue;
   private xhr: XMLHttpRequest | null = null;
-  private poll: ReturnType<typeof setInterval> | null = null;
+  private timer: ReturnType<typeof setInterval> | null = null;
 
   constructor(private readonly config: ZetroqConfig) {
     this.client = new ZetroqClient(config);
@@ -81,10 +82,40 @@ export class ChatSession {
     this.listeners.forEach((l) => l(this.state));
   }
 
-  /** Signed identity token from YOUR server (see README). */
-  async identify(token: string): Promise<void> {
+  /**
+   * Signed identity token from YOUR server (see README). Before start() it is
+   * sent on /start; once the chat is open it is verified at once via
+   * POST /identify (no session restart). Kept for later sends.
+   */
+  async identify(token: string, hints: { name?: string; email?: string; phone?: string } = {}): Promise<IdentifyResult | null> {
     this.identityToken = token;
-    if (this.state.ready) await this.start(this.state.conversationId ?? undefined);
+    if (!this.state.ready) return null;
+    return this.client.identify({
+      visitorId: this.visitorId,
+      conversationId: this.state.conversationId ?? undefined,
+      identityToken: token,
+      ...hints,
+    });
+  }
+
+  /** Registers this device's FCM / APNs token on the current conversation (with this visitor's id). */
+  registerPushToken(token: string, platform: 'ios' | 'android' | 'web'): Promise<unknown> {
+    return this.client.registerPushToken(token, platform, this.state.conversationId ?? undefined, this.visitorId || undefined);
+  }
+
+  /** Uploads with your `uploadAttachment` callback when configured, else ZetroQ POST /upload. */
+  async upload(file: PickedFile): Promise<UploadedAttachment> {
+    if (this.config.uploadAttachment) {
+      const url = await this.config.uploadAttachment(file);
+      return { url, name: file.name, mimeType: file.mimeType, size: 0 };
+    }
+    return this.client.upload({ visitorId: this.visitorId, conversationId: this.state.conversationId ?? undefined, file });
+  }
+
+  /** Uploads a picked file and sends its link as a message. */
+  async sendAttachment(file: PickedFile): Promise<void> {
+    const attachment = await this.upload(file);
+    await this.send(`${attachment.name}: ${attachment.url}`);
   }
 
   async start(conversationId?: string): Promise<void> {
@@ -144,9 +175,10 @@ export class ChatSession {
           conversationId: item.conversationId,
           content: item.content,
           clientMessageId: item.clientMessageId,
+          identityToken: this.identityToken,
         });
         await this.queue.remove(item.clientMessageId);
-        this.mark(item.clientMessageId, 'sent');
+        this.mark(item.clientMessageId, 'sent', res.message?.id);
         if (res.reply) this.add(res.reply);
         this.set({ quickReplies: res.quickReplies });
       } catch {
@@ -157,18 +189,44 @@ export class ChatSession {
     }
   }
 
-  private mark(clientMessageId: string, status: ChatMessage['status']): void {
-    this.set({ messages: this.state.messages.map((m) => (m.clientMessageId === clientMessageId ? { ...m, status } : m)) });
+  /** Status of a local bubble; once sent it takes the server id so history replays never duplicate it. */
+  private mark(clientMessageId: string, status: ChatMessage['status'], serverId?: string): void {
+    this.set({
+      messages: this.state.messages.map((m) =>
+        m.clientMessageId === clientMessageId ? { ...m, status, id: serverId || m.id } : m,
+      ),
+    });
   }
 
   private add(message: ChatMessage): void {
-    if (message.id && this.state.messages.some((m) => m.id === message.id)) return;
+    const known = this.state.messages.some(
+      (m) => (message.id && m.id === message.id) || (message.clientMessageId && m.clientMessageId === message.clientMessageId),
+    );
+    if (known) return;
     this.set({ messages: [...this.state.messages, message] });
+  }
+
+  /** Newest message the server knows (cursor for GET /history?after=). */
+  private lastServerId(): string | undefined {
+    for (let i = this.state.messages.length - 1; i >= 0; i--) {
+      const m = this.state.messages[i];
+      if (m.id && m.id !== m.clientMessageId) return m.id;
+    }
+    return undefined;
+  }
+
+  /** One history poll: GET /history?after=<newest>, then resend anything queued. */
+  async poll(): Promise<void> {
+    const id = this.state.conversationId;
+    if (!id) return;
+    const page = await this.client.history(this.visitorId, id, { after: this.lastServerId(), identityToken: this.identityToken });
+    page.messages.forEach((m) => this.add(m));
+    await this.flush();
   }
 
   private connect(): void {
     const conversationId = this.state.conversationId;
-    if (!conversationId || this.xhr || this.poll) return;
+    if (!conversationId || this.xhr || this.timer) return;
     if (typeof XMLHttpRequest === 'undefined') {
       this.startPolling();
       return;
@@ -176,7 +234,7 @@ export class ChatSession {
     const xhr = new XMLHttpRequest();
     let seen = 0;
     let buffer = '';
-    xhr.open('GET', this.client.streamUrl(conversationId));
+    xhr.open('GET', this.client.streamUrl(conversationId, this.visitorId));
     Object.entries(this.client.headers(this.visitorId)).forEach(([k, v]) => xhr.setRequestHeader(k, v));
     xhr.setRequestHeader('Accept', 'text/event-stream');
     xhr.onprogress = () => {
@@ -202,24 +260,16 @@ export class ChatSession {
   }
 
   private startPolling(): void {
-    if (this.poll) return;
-    this.poll = setInterval(() => {
-      const id = this.state.conversationId;
-      if (!id) return;
-      this.client
-        .history(this.visitorId, id)
-        .then((list) => {
-          list.forEach((m) => this.add(m));
-          return this.flush();
-        })
-        .catch(() => undefined);
+    if (this.timer) return;
+    this.timer = setInterval(() => {
+      this.poll().catch(() => undefined);
     }, 5000);
   }
 
   disconnect(): void {
     this.xhr?.abort();
     this.xhr = null;
-    if (this.poll) clearInterval(this.poll);
-    this.poll = null;
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
   }
 }

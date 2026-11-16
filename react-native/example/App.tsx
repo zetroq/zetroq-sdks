@@ -25,6 +25,7 @@ function Chat() {
     return () => sub.remove();
   }, [open]);
 
+  // Picked files are uploaded to ZetroQ (POST /upload); pass uploadAttachment to use your own storage.
   return (
     <ChatScreen
       pickAttachment={async () => {
@@ -32,7 +33,6 @@ function Chat() {
         const f = r.assets?.[0];
         return f ? { uri: f.uri, name: f.name, mimeType: f.mimeType ?? 'application/octet-stream' } : null;
       }}
-      uploadAttachment={async (file) => file.uri /* replace with your upload */}
     />
   );
 }

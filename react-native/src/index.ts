@@ -4,6 +4,7 @@ export type { ChatScreenProps } from './ChatScreen';
 export { ChatSession, themeFromSettings, DEFAULT_THEME } from './session';
 export type { SessionState } from './session';
 export { ZetroqClient, ZetroqApiError, parseSse, toMessage } from './client';
+export type { HistoryPage, IdentifyResult, SendResult, StartResult, UploadedAttachment } from './client';
 export { OfflineQueue, makeClientMessageId } from './queue';
 export { parseZetroqPush, handleNotificationTap } from './push';
 export type { ZetroqPushData } from './push';

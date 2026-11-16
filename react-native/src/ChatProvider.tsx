@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { Platform } from 'react-native';
 import { ChatSession, type SessionState } from './session';
-import type { ZetroqConfig } from './types';
+import type { PickedFile, ZetroqConfig } from './types';
 
 interface ChatContextValue {
   session: ChatSession;
@@ -33,6 +33,8 @@ export function ZetroqChatProvider(props: ZetroqConfig & { children?: React.Reac
 export function useZetroqChat(): ChatContextValue & {
   send: (text: string) => Promise<void>;
   open: (conversationId: string) => Promise<void>;
+  identify: (token: string) => Promise<unknown>;
+  sendAttachment: (file: PickedFile) => Promise<void>;
   registerPushToken: (token: string) => Promise<void>;
 } {
   const ctx = React.useContext(ChatContext);
@@ -43,9 +45,11 @@ export function useZetroqChat(): ChatContextValue & {
     state,
     send: (text) => session.send(text),
     open: (id) => session.open(id),
+    identify: (token) => session.identify(token),
+    sendAttachment: (file) => session.sendAttachment(file),
     registerPushToken: async (token) => {
       const os = Platform.OS === 'ios' || Platform.OS === 'android' ? Platform.OS : 'web';
-      await session.client.registerPushToken(token, os, state.conversationId ?? undefined);
+      await session.registerPushToken(token, os);
     },
   };
 }

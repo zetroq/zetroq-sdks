@@ -31,6 +31,8 @@ export interface ZetroqConfig {
   /** Persistent storage (AsyncStorage works). Memory only when omitted. */
   storage?: KeyValueStorage;
   fetchImpl?: typeof fetch;
+  /** Optional own upload (return a public URL). Default: ZetroQ `POST /upload`. */
+  uploadAttachment?: (file: PickedFile) => Promise<string>;
 }
 
 export interface KeyValueStorage {

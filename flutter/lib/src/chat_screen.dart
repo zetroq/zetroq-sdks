@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 
 import 'chat.dart';
+import 'client.dart';
 
-/// Ready-made chat screen. [onAttach] is a pluggable picker + upload that
-/// returns a link to send (e.g. file_picker + your storage), or null.
+/// Ready-made chat screen.
+/// [onPickFile] picks a file (e.g. file_picker) that is uploaded to ZetroQ
+/// (POST /upload) and sent as a link. [onAttach] (optional, older API) is your
+/// own picker + upload returning the link to send.
 class ZetroqChatScreen extends StatefulWidget {
-  const ZetroqChatScreen({super.key, required this.chat, this.onAttach});
+  const ZetroqChatScreen({super.key, required this.chat, this.onPickFile, this.onAttach});
 
   final ZetroqChat chat;
+  final Future<ZetroqFile?> Function()? onPickFile;
   final Future<String?> Function()? onAttach;
 
   @override
@@ -88,13 +92,26 @@ class _ZetroqChatScreenState extends State<ZetroqChatScreen> {
           SafeArea(
             top: false,
             child: Row(children: [
-              if (widget.onAttach != null)
+              if (widget.onPickFile != null || widget.onAttach != null)
                 IconButton(
                   tooltip: 'Attach a file',
                   icon: const Icon(Icons.attach_file),
                   onPressed: () async {
-                    final link = await widget.onAttach!();
-                    if (link != null) _submit(link);
+                    if (widget.onAttach != null) {
+                      final link = await widget.onAttach!();
+                      if (link != null) _submit(link);
+                      return;
+                    }
+                    final file = await widget.onPickFile!();
+                    if (file == null) return;
+                    try {
+                      await widget.chat.sendAttachment(file);
+                    } catch (_) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.maybeOf(context)
+                            ?.showSnackBar(const SnackBar(content: Text('Could not upload that file')));
+                      }
+                    }
                   },
                 ),
               Expanded(

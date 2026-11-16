@@ -58,16 +58,14 @@ npm install @zetroq/chat-react-native
 Usage:
 ```tsx
 import React from 'react';
-import { ZetroqChatView } from '@zetroq/chat-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ZetroqChatProvider, ChatScreen } from '@zetroq/chat-react-native';
 
 export function SupportScreen() {
   return (
-    <ZetroqChatView
-      botToken="YOUR_WIDGET_TOKEN"
-      host="https://api.zetroq.com"
-      visitorName="Jane Doe"
-      visitorEmail="jane@example.com"
-    />
+    <ZetroqChatProvider botToken="YOUR_WIDGET_TOKEN" storage={AsyncStorage} appDomain="app.example.com">
+      <ChatScreen pickAttachment={myPicker} />
+    </ZetroqChatProvider>
   );
 }
 ```
@@ -87,14 +85,11 @@ Usage:
 import 'package:flutter/material.dart';
 import 'package:zetroq_chat/zetroq_chat.dart';
 
+final chat = ZetroqChat(botToken: 'YOUR_WIDGET_TOKEN', appDomain: 'app.example.com');
+
 void openChat(BuildContext context) {
   Navigator.of(context).push(
-    MaterialPageRoute(
-      builder: (context) => const ZetroqChatScreen(
-        botToken: 'YOUR_WIDGET_TOKEN',
-        host: 'https://api.zetroq.com',
-      ),
-    ),
+    MaterialPageRoute(builder: (context) => Scaffold(body: ZetroqChatScreen(chat: chat))),
   );
 }
 ```
@@ -125,14 +120,22 @@ const signature = crypto
 const identityToken = `${payload}.${signature}`;
 ```
 
-Pass the `identityToken` into `identify(token)` across any of the SDKs.
+Pass the `identityToken` into `identify(token)` across any of the SDKs. Once the chat is open the SDKs verify it at
+once with `POST /identify`; only a verified token links the person (unsigned name / email / phone are hints only).
+
+## Public chat API used by the SDKs
+
+All SDKs use `{API}/api/v1/public/bots/{widgetToken}/…`: `start`, `message` (with `clientMessageId`), `history`,
+`upload`, `identify`, `stream` (SSE) and `push-tokens`. There is no hosted chat page. Full reference:
+`planning/v2/chat-omni/public-chat-api.md` in the main repo.
 
 ---
 
 ## Push Notifications (FCM & APNs)
 
-When customers are away from the chat screen, live human agent responses can be delivered via push notification:
-1. Setup Firebase Cloud Messaging (FCM) credentials in your ZetroQ organization console.
+Agent replies, and bot replies sent while the visitor has had no chat open for `CHAT_PUSH_AWAY_MINUTES` (default 5),
+are delivered by push notification:
+1. ZetroQ owner: set `CHAT_PUSH_ENABLED`, `FCM_PROJECT_ID` and `FCM_SERVICE_ACCOUNT_PATH` on the server (Firebase project with the iOS and Android apps, APNs key uploaded).
 2. In your mobile app, obtain the device push token and register it:
    - React Native: `ZetroqChat.registerPushToken(fcmToken)`
    - Flutter: `ZetroqChat.registerPushToken(fcmToken)`

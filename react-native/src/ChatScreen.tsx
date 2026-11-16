@@ -4,9 +4,9 @@ import { useZetroqChat } from './ChatProvider';
 import type { AttachmentPicker, ChatMessage } from './types';
 
 export interface ChatScreenProps {
-  /** Optional file picker; the chosen file is sent as a link message. */
+  /** Optional file picker; the chosen file is uploaded and sent as a link message. */
   pickAttachment?: AttachmentPicker;
-  /** Uploads a picked file and returns a public URL (your storage or ZetroQ upload when available). */
+  /** Optional own upload returning a public URL. Default: ZetroQ `POST /upload` (size / type limits apply). */
   uploadAttachment?: (file: { uri: string; name: string; mimeType: string }) => Promise<string>;
   placeholder?: string;
 }
@@ -39,11 +39,15 @@ export function ChatScreen({ pickAttachment, uploadAttachment, placeholder = 'Ty
   };
 
   const attach = async (): Promise<void> => {
-    if (!pickAttachment || !uploadAttachment) return;
+    if (!pickAttachment) return;
     const file = await pickAttachment();
     if (!file) return;
-    const url = await uploadAttachment(file);
-    submit(`${file.name}: ${url}`);
+    try {
+      const url = uploadAttachment ? await uploadAttachment(file) : (await session.upload(file)).url;
+      submit(`${file.name}: ${url}`);
+    } catch {
+      submit(`${file.name} (upload failed)`);
+    }
   };
 
   const renderItem = ({ item }: { item: ChatMessage }): React.ReactElement => {
@@ -91,7 +95,7 @@ export function ChatScreen({ pickAttachment, uploadAttachment, placeholder = 'Ty
     React.createElement(
       View,
       { style: styles.composer },
-      pickAttachment && uploadAttachment
+      pickAttachment
         ? React.createElement(
             Pressable,
             { accessibilityRole: 'button', accessibilityLabel: 'Attach a file', onPress: () => void attach(), style: styles.iconBtn },
